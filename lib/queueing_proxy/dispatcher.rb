@@ -39,12 +39,16 @@ module QueueingProxy
       def receive_data(data)
         status = Integer(data[/^HTTP\/(1\.1|1\.0) (\d+)/, 2])
         close_connection
-        if status == 200
+        case status
+        when 200
           logger.info "Done dispatching #{job.jobid}"
           job.delete
-        else
+        when 500
           logger.info "Error #{status}"
           job.release(:delay => 5)
+        else
+          logger.info "Done dispatching #{job.jobid} -- #{status}"
+          job.delete
         end
       end
       
