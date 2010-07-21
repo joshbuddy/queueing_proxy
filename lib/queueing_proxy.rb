@@ -12,7 +12,11 @@ require 'queueing_proxy/dispatcher'
 module QueueingProxy
 
   def self.from(host, port)
-    DSL.new(host, port)
+    DSL.new.from(host, port)
   end
 
+end
+
+def QueueingProxy(&blk)
+  QueueingProxy::DSL.new(&blk)
 end

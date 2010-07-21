@@ -1,17 +1,24 @@
 module QueueingProxy
   class Queuer
-    def initialize(host, port, beanstalk_host, tube)
-      @host, @port, @beanstalk_host, @tube = host, port, beanstalk_host, tube
+    attr_reader :logger
+
+    def initialize(logger, host, port, beanstalk_host, tube)
+      @logger, @host, @port, @beanstalk_host, @tube = logger, host, port, beanstalk_host, tube
+      logger.info "Starting queuer on #{host}:#{port} using beanstalk at #{tube}@#{beanstalk_host}"
     end
 
     def run
       beanstalk = EMJack::Connection.new(:host => @beanstalk_host, :tube => @tube)
-      app = proc{|env| [200, {}, []]}
+      app = proc do |env|
+        logger.info "Queueing #{env['HTTP_VERSION']} #{env['PATH_INFO']} #{env['REQUEST_METHOD']}"
+        [200, {}, []]
+      end
       backend = FakeBackend.new
       EM.start_server(@host, @port, QueuerConnection) do |conn|
         conn.beanstalk = beanstalk
         conn.app = app
         conn.backend = backend
+        conn.logger = logger
       end
     end
 
@@ -21,7 +28,7 @@ module QueueingProxy
     end
     
     class QueuerConnection < Thin::Connection
-      attr_accessor :beanstalk
+      attr_accessor :beanstalk, :logger
 
       def post_init
         @data = ''
@@ -33,13 +40,17 @@ module QueueingProxy
         super(data)
       end
 
-      def post_process(pre_process)
+      def unbind
         queue_data
-        super(pre_process)
+        super
       end
 
       def queue_data
-        beanstalk.put({:data => @data, :time => Time.new.to_i}.to_json)
+        if @data != ''
+          beanstalk.put({:data => @data, :time => Time.new.to_i}.to_json) { |id|
+            logger.info "Job queued #{id}"
+          }
+        end
       end
     end
   end
