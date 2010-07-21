@@ -25,6 +25,7 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency 'em-jack'
   s.add_runtime_dependency 'thin'
   s.add_runtime_dependency 'json'
+  s.add_runtime_dependency 'thor'
 
   if s.respond_to? :specification_version then
     current_version = Gem::Specification::CURRENT_SPECIFICATION_VERSION
