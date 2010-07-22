@@ -43,7 +43,7 @@ module QueueingProxy
         when 200
           logger.info "Done dispatching #{job.jobid}"
           job.delete
-        when 500
+        when 500..599
           logger.info "Error #{status}"
           job.release(:delay => 5)
         else
