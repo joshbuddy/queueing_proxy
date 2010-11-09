@@ -44,8 +44,8 @@ module QueueingProxy
           logger.info "Done dispatching #{job.jobid}"
           job.delete
         when 500..599
-          logger.info "Error #{status}"
-          job.release(:delay => 5)
+          logger.info "Error #{status}: burying #{job.jobid}"
+          job.bury
         else
           logger.info "Done dispatching #{job.jobid} -- #{status}"
           job.delete
