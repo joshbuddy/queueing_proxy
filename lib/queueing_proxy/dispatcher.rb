@@ -45,7 +45,7 @@ module QueueingProxy
           job.delete
         when 500..599
           logger.info "Error #{status}: burying #{job.jobid}"
-          job.bury
+          job.bury 4294967295 # 4294967295 is from the Beanstalkd protocol as the least important possible job priority... This client is fucked and doesn't set a default
         else
           logger.info "Done dispatching #{job.jobid} -- #{status}"
           job.delete
