@@ -39,6 +39,7 @@ module QueueingProxy
         parser.on_headers_complete {
           process_http_status_code parser.status_code
           close_connection
+          :stop
         }
         # Send the HTTP request upstream
         send_data(payload)
