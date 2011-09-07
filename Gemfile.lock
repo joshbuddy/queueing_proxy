@@ -4,7 +4,7 @@ PATH
     queueing_proxy (0.0.4)
       em-jack
       eventmachine
-      http_parser
+      http_parser.rb
       json
       thin
       thor (>= 0.13.8)
@@ -16,7 +16,7 @@ GEM
     em-jack (0.1.3)
       eventmachine
     eventmachine (0.12.10)
-    http_parser (0.1.3)
+    http_parser.rb (0.5.2)
     json (1.5.4)
     rack (1.3.2)
     thin (1.2.11)
