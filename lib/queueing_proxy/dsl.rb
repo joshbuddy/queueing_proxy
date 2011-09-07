@@ -35,7 +35,7 @@ module QueueingProxy
       @logger = logger
       self
     end
-    
+
     def run
       unless EM.reactor_running?
         EM.run{ run }

@@ -26,6 +26,7 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency 'thin'
   s.add_runtime_dependency 'json'
   s.add_runtime_dependency 'thor', '>= 0.13.8'
+  s.add_runtime_dependency 'http_parser'
 
   if s.respond_to? :specification_version then
     current_version = Gem::Specification::CURRENT_SPECIFICATION_VERSION

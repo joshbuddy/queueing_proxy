@@ -1,5 +1,12 @@
 module QueueingProxy
   class Queuer
+    # 4294967295 is from the Beanstalkd protocol as the least important 
+    # possible job priority. 0 is the highest pri.
+    module Priority
+      Lowest = 4294967295
+      Highest = 0
+    end
+
     attr_reader :logger
 
     def initialize(logger, host, port, beanstalk_host, tube)
