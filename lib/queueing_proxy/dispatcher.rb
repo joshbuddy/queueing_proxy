@@ -33,11 +33,12 @@ module QueueingProxy
 
     class UpstreamDispatcher < EventMachine::Connection
       attr_accessor :payload, :dispatcher, :logger, :dispatcher, :job
-      
-      def post_init
-        # Kill the connection and start processing the response.
-        parser.on_headers_complete {
-          process_http_status_code parser.status_code
+        
+      def initialize
+        @response_parser = Http::Parser.new
+
+        @response_parser.on_headers_complete {
+          process_http_status_code @response_parser.status_code
           close_connection # Kill the upstream EM connection
           :stop # Stops HTTP parser
         }
@@ -50,7 +51,7 @@ module QueueingProxy
 
       def receive_data(data)
         # Send the upstream response into the HTTP parser
-        parser << data
+        @response_parser << data
       end
 
       # Figure out what to do with the beanstalk job if we 
@@ -70,11 +71,6 @@ module QueueingProxy
       
       def unbind
         dispatcher.run
-      end
-
-    private
-      def parser
-        @parser ||= Http::Parser.new
       end
     end
   end
