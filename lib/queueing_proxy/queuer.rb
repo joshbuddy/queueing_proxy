@@ -37,7 +37,7 @@ module QueueingProxy
       def ssl?
       end
     end
-    
+
     class QueuerConnection < Thin::Connection
       attr_accessor :beanstalk, :logger
 
