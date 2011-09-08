@@ -16,11 +16,11 @@ module QueueingProxy
 
     def run
       beanstalk.reserve do |job|
-        parsed_job = JSON.parse(job.body)
-        logger.info "Dispatching #{job.jobid}"
-        logger.debug parsed_job['data'] # Spit out the HTTP request we're gonn send upstream
-        
         begin
+          parsed_job = JSON.parse(job.body)
+          logger.info "Dispatching #{job.jobid}"
+          logger.debug parsed_job['data'] # Spit out the HTTP request we're gonn send upstream
+
           EventMachine.connect(@to_host, @to_port, UpstreamDispatcher) { |c|
             c.payload = parsed_job['data']
             c.dispatcher = self
@@ -30,8 +30,11 @@ module QueueingProxy
           }
         rescue EventMachine::ConnectionError
           job.release(:delay => 5)
-          logger.error "Problem connecting"
+          logger.error "Problem connecting. Releasing job."
           EM.add_timer(5){ run } # Try that again in 5 more seconds
+        rescue Exception => e
+          logger.error "Exception processing job #{job.id} (I'll buried it so you can look at it): #{e}"
+          job.bury
         end
       end
     end
