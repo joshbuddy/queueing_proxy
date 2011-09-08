@@ -33,8 +33,8 @@ module QueueingProxy
           logger.error "Problem connecting. Releasing job."
           EM.add_timer(5){ run } # Try that again in 5 more seconds
         rescue Exception => e
-          logger.error "Exception processing job #{job.id} (I'll buried it so you can look at it): #{e}"
-          job.bury
+          logger.error "Exception processing job #{job.id} (I buried it so you can look at it): #{e.inspect}: #{e.backtrace}"
+          job.bury Queuer::Priority::Lowest
         end
       end
     end
