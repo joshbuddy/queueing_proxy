@@ -6,13 +6,16 @@ module QueueingProxy
 
     def initialize(logger, to_host, to_port, beanstalk_host, tube)
       @logger, @to_host, @to_port, @beanstalk_host, @tube = logger, to_host, to_port, beanstalk_host, tube
-      @beanstalk = EMJack::Connection.new(:host => @beanstalk_host, :tube => @tube)
-      @beanstalk.watch(@tube)
-      logger.info "Starting dispatcher on #{to_host}:#{to_port} using beanstalk at #{tube}@#{beanstalk_host}"
+      beanstalk.watch(@tube) # Connect to the tube and listen
     end
-    
+
+    def beanstalk
+      logger.info "Listening on #{@to_host}:#{@to_port} using beanstalk at #{@tube}@#{@beanstalk_host}"
+      @beanstalk ||= EMJack::Connection.new(:host => @beanstalk_host, :tube => @tube)
+    end
+
     def run
-      @beanstalk.reserve do |job|
+      beanstalk.reserve do |job|
         logger.info "Dispatching #{job.jobid}"
         parsed_job = JSON.parse(job.body)
         begin
@@ -26,19 +29,17 @@ module QueueingProxy
         rescue EventMachine::ConnectionError
           job.release(:delay => 5)
           logger.info("Problem connecting")
-          EM.add_timer(5){ run }
+          EM.add_timer(5){ run } # Try that again in 5 more seconds
         end
       end
     end
 
     class UpstreamDispatcher < EventMachine::Connection
       attr_accessor :payload, :dispatcher, :logger, :dispatcher, :job
-        
-      def initialize
-        @response_parser = Http::Parser.new
-
-        @response_parser.on_headers_complete {
-          process_http_status_code @response_parser.status_code
+      
+      def post_init
+        response_parser.on_headers_complete {
+          process_http_status_code response_parser.status_code
           close_connection # Kill the upstream EM connection
           :stop # Stops HTTP parser
         }
@@ -51,7 +52,7 @@ module QueueingProxy
 
       def receive_data(data)
         # Send the upstream response into the HTTP parser
-        @response_parser << data
+        response_parser << data
       end
 
       # Figure out what to do with the beanstalk job if we 
@@ -71,6 +72,11 @@ module QueueingProxy
       
       def unbind
         dispatcher.run
+      end
+
+    private
+      def response_parser
+        @response_parser ||= Http::Parser.new
       end
     end
   end

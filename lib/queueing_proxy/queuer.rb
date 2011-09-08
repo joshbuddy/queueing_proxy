@@ -29,8 +29,12 @@ module QueueingProxy
       end
     end
 
+    # We need this to make Thin happy
     class FakeBackend
       def connection_finished(conn)
+      end
+
+      def ssl?
       end
     end
     
