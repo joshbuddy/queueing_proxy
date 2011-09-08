@@ -37,15 +37,12 @@ module QueueingProxy
     class UpstreamDispatcher < EventMachine::Connection
       attr_accessor :payload, :dispatcher, :logger, :dispatcher, :job
       
-      def post_init
+      def connection_completed
         response_parser.on_headers_complete {
           process_http_status_code response_parser.status_code
           close_connection # Kill the upstream EM connection
           :stop # Stops HTTP parser
         }
-      end
-
-      def connection_completed
         # Send the HTTP request upstream
         send_data(payload)
       end
