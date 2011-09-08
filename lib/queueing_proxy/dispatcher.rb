@@ -38,7 +38,7 @@ module QueueingProxy
       attr_accessor :payload, :dispatcher, :logger, :dispatcher, :job
       
       def connection_completed
-        response_parser.on_headers_complete {
+        response_parser.on_headers_complete = Proc.new {
           process_http_status_code response_parser.status_code
           close_connection # Kill the upstream EM connection
           :stop # Stops HTTP parser
