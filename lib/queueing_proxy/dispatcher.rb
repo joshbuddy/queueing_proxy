@@ -2,6 +2,9 @@ require "http/parser"
 
 module QueueingProxy
   class Dispatcher
+    INACTIVITY_TIMEOUT = 20
+    PENDING_CONNECTION_TIMEOUT = 5
+
     attr_reader :logger
 
     def initialize(logger, to_host, to_port, beanstalk_host, tube)
@@ -27,6 +30,9 @@ module QueueingProxy
             c.logger = logger
             c.job = job
             c.dispatcher = self
+
+            c.comm_inactivity_timeout = INACTIVITY_TIMEOUT
+            c.pending_connect_timeout = PENDING_CONNECTION_TIMEOUT
           }
         rescue EventMachine::ConnectionError
           job.release(:delay => 5)
@@ -35,6 +41,7 @@ module QueueingProxy
         rescue Exception => e
           logger.error "Exception processing job #{job.id} (I buried it so you can look at it): #{e.inspect}: #{e.backtrace}"
           job.bury Queuer::Priority::Lowest
+          run # Run the worker again!
         end
       end
     end
