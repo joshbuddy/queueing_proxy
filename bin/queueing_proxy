@@ -7,7 +7,7 @@ require 'queueing_proxy'
 QueueingProxy {
   from('0.0.0.0', 10000)
   to('127.0.0.1', 10001)
-  times(2)
+  times(4)
   logger(Logger.new($stdout))
   queue_with('0.0.0.0', 'http-queue')
 }.run

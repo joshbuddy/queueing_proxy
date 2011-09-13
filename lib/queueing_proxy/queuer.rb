@@ -58,7 +58,7 @@ module QueueingProxy
 
       def queue_data
         if @data != ''
-          beanstalk.put({:data => @data, :time => Time.new.to_i}.to_json) { |id|
+          beanstalk.put(@data) { |id|
             logger.info "Job queued #{id}"
           }
         end

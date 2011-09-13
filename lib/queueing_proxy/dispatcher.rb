@@ -2,90 +2,95 @@ require "http/parser"
 
 module QueueingProxy
   class Dispatcher
-    INACTIVITY_TIMEOUT = 20
-    PENDING_CONNECTION_TIMEOUT = 5
-
-    attr_reader :logger
+    attr_reader :logger, :beanstalk
 
     def initialize(logger, to_host, to_port, beanstalk_host, tube)
       @logger, @to_host, @to_port, @beanstalk_host, @tube = logger, to_host, to_port, beanstalk_host, tube
+      @beanstalk = EMJack::Connection.new(:host => @beanstalk_host, :tube => @tube)
       beanstalk.watch(@tube) # Connect to the tube and listen
     end
 
-    def beanstalk
-      logger.info "Listening on #{@to_host}:#{@to_port} using beanstalk at #{@tube}@#{@beanstalk_host}"
-      @beanstalk ||= EMJack::Connection.new(:host => @beanstalk_host, :tube => @tube)
-    end
-
     def run
+      logger.info "Worker #{object_id} at your service"
       beanstalk.reserve do |job|
-        begin
-          parsed_job = JSON.parse(job.body)
-          logger.info "Dispatching #{job.jobid}"
-          logger.debug parsed_job['data'] # Spit out the HTTP request we're gonn send upstream
-
-          EventMachine.connect(@to_host, @to_port, UpstreamDispatcher) { |c|
-            c.payload = parsed_job['data']
-            c.dispatcher = self
-            c.logger = logger
-            c.job = job
-            c.dispatcher = self
-
-            c.comm_inactivity_timeout = INACTIVITY_TIMEOUT
-            c.pending_connect_timeout = PENDING_CONNECTION_TIMEOUT
-          }
-        rescue EventMachine::ConnectionError
+        logger.info "Reserved #{job}"
+        upstream = Upstream.new(job.body, @to_host, @to_port, 30, logger).request
+        upstream.errback{
+          logger.info "Ruh roh! Errback. Try again in 5 seconds. #{job}"
           job.release(:delay => 5)
-          logger.error "Problem connecting. Releasing job."
-          EM.add_timer(5){ run } # Try that again in 5 more seconds
-        rescue Exception => e
-          logger.error "Exception processing job #{job.id} (I buried it so you can look at it): #{e.inspect}: #{e.backtrace}"
-          job.bury Queuer::Priority::Lowest
-          run # Run the worker again!
-        end
+          run # Call again
+        }
+        upstream.callback {
+          case Integer(upstream.response.status_code)
+          when 200
+            logger.info "Done dispatching #{job.jobid}"
+            job.delete
+          when 500..599 # If our server has a problem, bury the job so we can inspect it later.
+            logger.info "Error #{status}: burying #{job.jobid}"
+            job.bury Queuer::Priority::Lowest
+          else
+            logger.info "Done dispatching #{job.jobid} -- #{status}"
+            job.delete
+          end
+          run
+        }
       end
     end
 
-    class UpstreamDispatcher < EventMachine::Connection
-      attr_accessor :payload, :dispatcher, :logger, :dispatcher, :job
-      
-      def connection_completed
-        response_parser.on_headers_complete = Proc.new {
-          process_http_status_code response_parser.status_code
-          close_connection # Kill the upstream EM connection
-          :stop # Stops HTTP parser
-        }
-        # Send the HTTP request upstream
-        send_data(payload)
-      end
+    # Defferable upstream connection
+    class Upstream
+      include EventMachine::Deferrable
 
-      def receive_data(data)
-        # Send the upstream response into the HTTP parser
-        response_parser << data
-      end
+      module Client
+        attr_accessor :client
 
-      # Figure out what to do with the beanstalk job if we 
-      def process_http_status_code(status)
-        case Integer(status)
-        when 200
-          logger.info "Done dispatching #{job.jobid}"
-          job.delete
-        when 500..599 # If our server has a problem, bury the job so we can inspect it later.
-          logger.info "Error #{status}: burying #{job.jobid}"
-          job.bury Queuer::Priority::Lowest
-        else
-          logger.info "Done dispatching #{job.jobid} -- #{status}"
-          job.delete
+        def connection_completed
+          # Setup our callback for when the upstream response hits us
+          client.response.on_headers_complete = Proc.new {
+            client.succeed
+            close_connection
+            :stop
+          }
+
+          # Send the HTTP request upstream
+          send_data client.payload
+        end
+
+        def receive_data(data)
+          # Send the upstream response into the HTTP parser
+          client.response << data
+        end
+
+        # Connection failures result in an unbinding
+        def unbind
+          client.fail
         end
       end
-      
-      def unbind
-        dispatcher.run
+
+      attr_accessor :payload, :host, :port, :ttl, :logger
+      attr_reader :response
+
+      def initialize(payload, host, port, ttl, logger)
+        @response = Http::Parser.new
+        @payload, @host, @port, @ttl, @logger = payload, host, port, ttl, logger
       end
 
-    private
-      def response_parser
-        @response_parser ||= Http::Parser.new
+      def request
+        begin
+          EventMachine.connect(host, port, Client) {|c|
+            c.client = self
+            c.comm_inactivity_timeout = ttl
+            c.pending_connect_timeout = 2
+          }
+        rescue => e
+          logger.error e
+          fail # If something explodes here, fail the defferable
+        end
+        self
+      end
+
+      def start_ttl
+        EM::Timer.new(ttl){ fail } if ttl
       end
     end
   end

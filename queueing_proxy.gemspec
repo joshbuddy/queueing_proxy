@@ -24,8 +24,6 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency 'eventmachine'
   s.add_runtime_dependency 'em-jack'
   s.add_runtime_dependency 'thin'
-  s.add_runtime_dependency 'json'
-  s.add_runtime_dependency 'thor', '>= 0.13.8'
   s.add_runtime_dependency 'http_parser.rb'
 
   if s.respond_to? :specification_version then
@@ -38,4 +36,3 @@ Gem::Specification.new do |s|
   else
   end
 end
-
