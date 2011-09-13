@@ -2,39 +2,53 @@ require "http/parser"
 
 module QueueingProxy
   class Dispatcher
-    attr_reader :logger, :beanstalk
+    attr_reader :logger
 
     def initialize(logger, to_host, to_port, beanstalk_host, tube)
       @logger, @to_host, @to_port, @beanstalk_host, @tube = logger, to_host, to_port, beanstalk_host, tube
-      @beanstalk = EMJack::Connection.new(:host => @beanstalk_host, :tube => @tube)
-      # beanstalk.watch(@tube) # Connect to the tube and listen
     end
 
+    # Setup a beanstalk connection
+    def beanstalk
+      @beanstalk ||= EMJack::Connection.new(:host => @beanstalk_host, :tube => @tube)
+    end
+
+    # Run the beanstalk consumer that pops the job off the queue and passes it 
+    # to a connection object that makes an upstream connection
     def run
-      logger.info "Worker #{object_id} at your service"
-      beanstalk.reserve do |job|
-        logger.info "Reserved #{job}"
+      logger.debug "Worker #{object_id} reporting again for duty"
+      beanstalk.reserve {|job|
+        logger.info "Worker #{object_id} reserved #{job}"
         upstream = Upstream.new(job.body, @to_host, @to_port, 15, logger).request
         upstream.errback{
-          logger.info "Ruh roh! Errback. Try again in 5 seconds. #{job}"
-          job.release(:delay => 5)
-          run # Call again
+          logger.info "Worker #{object_id} upstream error with #{job}. Requeueing."
+          job.release(:delay => 5){
+            run # Call again
+          }
         }
         upstream.callback {
           case status = Integer(upstream.response.status_code)
           when 200
-            logger.info "Done dispatching #{job.jobid}"
+            logger.info "Worker #{object_id} succesfully dispatched #{job.jobid}"
             job.delete
           when 500..599 # If our server has a problem, bury the job so we can inspect it later.
-            logger.info "Error #{status}: burying #{job.jobid}"
+            logger.info "Worker #{object_id} HTTP #{status} error. Burying #{job} for inspection."
             job.bury Queuer::Priority::Lowest
           else
-            logger.info "Done dispatching #{job.jobid} -- #{status}"
+            logger.info "Worker #{object_id} HTTP #{status} unhandled response. Deleting #{job.jobid}"
             job.delete
           end
           run
         }
-      end
+      }.errback{|status|
+        case status
+        when :disconnected
+          logger.error "Worker #{object_id} reservation error. Rescheduling."
+        else
+          logger.error "Worker #{object_id} unhandled error #{status}."
+        end
+        EM::Timer.new(5){ run }
+      }
     end
 
     # Defferable upstream connection

@@ -17,7 +17,7 @@ module QueueingProxy
     def run
       beanstalk = EMJack::Connection.new(:host => @beanstalk_host, :tube => @tube)
       app = proc do |env|
-        logger.info "Queueing #{env['HTTP_VERSION']} #{env['PATH_INFO']} #{env['REQUEST_METHOD']}"
+        logger.info "Frontend queueing #{env['HTTP_VERSION']} #{env['PATH_INFO']} #{env['REQUEST_METHOD']}"
         [200, {}, []]
       end
       backend = FakeBackend.new
@@ -58,8 +58,8 @@ module QueueingProxy
 
       def queue_data
         if @data != ''
-          beanstalk.put(@data) { |id|
-            logger.info "Job queued #{id}"
+          beanstalk.put(@data) {|id|
+            logger.info "Frontend slurped job #{id}"
           }
         end
       end
