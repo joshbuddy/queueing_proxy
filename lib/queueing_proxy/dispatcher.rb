@@ -47,7 +47,7 @@ module QueueingProxy
         else
           logger.error "Worker #{object_id} unhandled error #{status}."
         end
-        EM::Timer.new(5){ run }
+        run
       }
     end
 
@@ -57,30 +57,30 @@ module QueueingProxy
 
       # The connection handler for EM.
       module Client
-        attr_accessor :client
+        attr_accessor :upstream
 
         # Succesful connection!
         def connection_completed
           # Setup our callback for when the upstream response hits us
-          client.response.on_headers_complete = Proc.new {
-            client.succeed
+          upstream.response.on_headers_complete = Proc.new {
+            upstream.succeed
             close_connection
             :stop
           }
 
           # Send the HTTP request upstream
-          send_data client.payload
+          send_data upstream.payload
         end
 
         # Read the response of the upstream proxy
         def receive_data(data)
           # Send the upstream response into the HTTP parser
-          client.response << data
+          upstream.response << data
         end
 
         # If something bad happens to the connection, bind gets called
         def unbind
-          client.fail
+          upstream.fail
         end
       end
 
@@ -95,11 +95,12 @@ module QueueingProxy
       # Connect to the upstream server and send the HTTP payload
       def request
         begin
-          @connection = EventMachine.connect(host, port, Client) {|c|
-            c.client = self
+          EventMachine.connect(host, port, Client) {|c|
+            c.upstream = self
             c.comm_inactivity_timeout = timeout
             c.pending_connect_timeout = timeout
           }
+          # TODO - Is this async/deferrable?
         rescue => e
           logger.error e
           fail # If something explodes here, fail the defferable
