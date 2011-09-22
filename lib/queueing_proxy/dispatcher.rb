@@ -79,7 +79,12 @@ module QueueingProxy
 
         # Read the response of the upstream proxy
         def receive_data(data)
-          upstream.response << data
+          begin
+            upstream.response << data
+          rescue HTTP::Parser::Error
+            upstream.fail
+            close_connection
+          end
         end
 
         # If something bad happens to the connection, bind gets called
