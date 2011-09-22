@@ -1,0 +1,19 @@
+#!/usr/bin/env ruby
+require 'rubygems'
+require 'thin'
+
+# curl "http://localhost:10001/?wait=5&status=500"
+# ---
+# wait - How many seconds should I wait before returning the status?
+# status - HTTP return code
+
+Thin::Server.start('127.0.0.1', 10001, Proc.new{|env|
+  req = Rack::Request.new(env)
+  puts "GET /?#{req.query_string}"
+  EventMachine::Timer.new(req.params['wait'].to_i) {
+    response = [(req.params['status'] || 200).to_i, {}, '']
+    env['async.callback'].call response
+  }
+  # Tell thin to chill, we're gonna run this stack async-style
+  [-1, {}, []]
+})

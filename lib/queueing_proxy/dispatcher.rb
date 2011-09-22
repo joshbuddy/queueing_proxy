@@ -21,22 +21,18 @@ module QueueingProxy
         logger.info "Worker #{object_id} reserved #{job}"
         upstream = Upstream.new(job.body, @to_host, @to_port, 15, logger).request
         upstream.errback{
-          logger.info "Worker #{object_id} upstream error with #{job}. Requeueing."
-          job.release(:delay => 5){
-            run # Call again
-          }
+          logger.info "Worker #{object_id} upstream connection timed-out with #{job}. Requeueing."
+          job.release(:delay => 5)
+          run
         }
         upstream.callback {
           case status = Integer(upstream.response.status_code)
-          when 200
-            logger.info "Worker #{object_id} succesfully dispatched #{job.jobid}"
+          when 200..299
+            logger.info "Worker #{object_id}. Deleting #{job.jobid}."
             job.delete
-          when 500..599 # If our server has a problem, bury the job so we can inspect it later.
-            logger.info "Worker #{object_id} HTTP #{status} error. Burying #{job} for inspection."
-            job.bury Queuer::Priority::Lowest
           else
-            logger.info "Worker #{object_id} HTTP #{status} unhandled response. Deleting #{job.jobid}"
-            job.delete
+            logger.info "Worker #{object_id}. Burying #{job} for inspection."
+            job.bury Queuer::Priority::Lowest
           end
           run
         }
@@ -74,7 +70,6 @@ module QueueingProxy
 
         # Read the response of the upstream proxy
         def receive_data(data)
-          # Send the upstream response into the HTTP parser
           upstream.response << data
         end
 
@@ -100,6 +95,7 @@ module QueueingProxy
             c.comm_inactivity_timeout = timeout
             c.pending_connect_timeout = timeout
           }
+
           # TODO - Is this async/deferrable?
         rescue => e
           logger.error e

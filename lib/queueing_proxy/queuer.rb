@@ -18,7 +18,7 @@ module QueueingProxy
       beanstalk = EMJack::Connection.new(:host => @beanstalk_host, :tube => @tube)
       app = proc do |env|
         logger.info "Frontend queueing #{env['HTTP_VERSION']} #{env['PATH_INFO']} #{env['REQUEST_METHOD']}"
-        [200, {}, []]
+        [204, {}, []]
       end
       backend = FakeBackend.new
       EM.start_server(@host, @port, QueuerConnection) do |conn|

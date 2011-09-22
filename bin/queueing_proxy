@@ -4,10 +4,20 @@ $LOAD_PATH << File.join(File.dirname(__FILE__), '..', 'lib')
 
 require 'queueing_proxy'
 
-QueueingProxy {
-  from('0.0.0.0', 10000)
-  to('127.0.0.1', 10001)
-  times(12)
-  logger(Logger.new($stdout))
-  queue_with('0.0.0.0', 'http-queue')
-}.run
+EM.run{
+  QueueingProxy {
+    from('0.0.0.0', 10000)
+    to('127.0.0.1', 10001)
+    times(12)
+    logger(Logger.new($stdout))
+    queue_with('0.0.0.0', 'http-queue')
+  }.run
+
+  QueueingProxy {
+    from('0.0.0.0', 10002)
+    to('127.0.0.1', 10001)
+    times(12)
+    logger(Logger.new($stdout))
+    queue_with('0.0.0.0', 'http-queue2')
+  }.run
+}
