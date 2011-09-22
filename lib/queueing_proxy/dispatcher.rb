@@ -4,8 +4,8 @@ module QueueingProxy
   class Dispatcher
     attr_reader :logger
 
-    def initialize(logger, to_host, to_port, beanstalk_host, tube)
-      @logger, @to_host, @to_port, @beanstalk_host, @tube = logger, to_host, to_port, beanstalk_host, tube
+    def initialize(logger, to_host, to_port, beanstalk_host, tube, retries=3)
+      @logger, @to_host, @to_port, @beanstalk_host, @tube, @retries = logger, to_host, to_port, beanstalk_host, tube, retries
     end
 
     # Setup a beanstalk connection
@@ -21,8 +21,17 @@ module QueueingProxy
         logger.info "Worker #{object_id} reserved #{job}"
         upstream = Upstream.new(job.body, @to_host, @to_port, 15, logger).request
         upstream.errback{
-          logger.info "Worker #{object_id} upstream connection timed-out with #{job}. Requeueing."
-          job.release(:delay => 5)
+          logger.info "Worker #{object_id} upstream connection timed-out with #{job}."
+          # If there's an upstream problem, try this a fe more times, then bury it
+          job.stats{|stats|
+            if stats['reserves'] < @retries
+              logger.info "Worker #{object_id} requeued."
+              job.release(:delay => 5)
+            else
+              logger.info "Worker #{object_id} max #{@retries} retries. Burying."
+              job.bury Queuer::Priority::Lowest
+            end
+          }
           run
         }
         upstream.callback {
