@@ -9,7 +9,9 @@ module QueueingProxy
 
     def beanstalks
       @beanstalks ||= @backends.map {|b|
-        EMJack::Connection.new(:host => b.host, :tube => b.tube)
+        connection = EMJack::Connection.new(:host => b.host, :tube => b.tube)
+        connection.errback { logger.error "Couldn't connect to beanstalk" }
+        connection
       }
     end
 

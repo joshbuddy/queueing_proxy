@@ -5,8 +5,8 @@ module QueueingProxy
     class Backend
       attr_reader :tube, :host
 
-      def initialize(host='localhost', port=80, workers=4, logger=Logger.new($stdout), &block)
-        @host, @port, @workers, @logger, @beanstalk_host, @tube = host, port, workers, logger, 'localhost', 'default'
+      def initialize(host='localhost', port=80, workers=4, &block)
+        @host, @port, @workers, @beanstalk_host, @tube = host, port, workers, 'localhost', 'default'
         instance_exec(&block) if block_given?
         self
       end
@@ -59,7 +59,10 @@ module QueueingProxy
           Frontend.new(@logger, host, port, backends).run
         end
         # Setup multiple backends
-        backends.each {|b| b.workers.each(&:run) }
+        backends.each {|b|
+          b.logger @logger
+          b.workers.each(&:run) 
+        }
       end
     end
 
