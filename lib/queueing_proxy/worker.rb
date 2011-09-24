@@ -1,7 +1,14 @@
 require "http/parser"
 
 module QueueingProxy
-  class Dispatcher
+  class Worker
+    # 4294967295 is from the Beanstalkd protocol as the least important 
+    # possible job priority. 0 is the highest pri.
+    module Priority
+      Lowest = 4294967295
+      Highest = 0
+    end
+
     attr_reader :logger
 
     def initialize(logger, to_host, to_port, beanstalk_host, tube, retries=3)
@@ -25,25 +32,23 @@ module QueueingProxy
           # If there's an upstream problem, try this a fe more times, then bury it
           job.stats{|stats|
             if stats['reserves'] < @retries
-              logger.info "Worker #{object_id} requeued."
-              job.release(:delay => 5)
+              logger.info "Worker #{object_id} delayed for 5 seconds."
+              job.release(:delay => 5){ run }
             else
               logger.info "Worker #{object_id} max #{@retries} retries. Burying."
-              job.bury Queuer::Priority::Lowest
+              job.bury(Priority::Lowest) { run }
             end
           }
-          run
         }
         upstream.callback {
           case status = Integer(upstream.response.status_code)
           when 200..299
             logger.info "Worker #{object_id}. Deleting #{job.jobid}."
-            job.delete
+            job.delete { run}
           else
             logger.info "Worker #{object_id}. Burying #{job} for inspection."
-            job.bury Queuer::Priority::Lowest
+            job.bury(Priority::Lowest) { run }
           end
-          run
         }
       }.errback{|status|
         case status
@@ -52,7 +57,7 @@ module QueueingProxy
         else
           logger.error "Worker #{object_id} unhandled error #{status}."
         end
-        run
+        run # Keep on chuggin partner!
       }
     end
 
@@ -109,7 +114,6 @@ module QueueingProxy
             c.comm_inactivity_timeout = timeout
             c.pending_connect_timeout = timeout
           }
-
           # TODO - Is this async/deferrable?
         rescue => e
           logger.error e

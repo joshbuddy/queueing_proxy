@@ -3,10 +3,10 @@ require 'eventmachine'
 require 'em-jack'
 require 'json'
 
-require 'queueing_proxy/dsl'
-require 'queueing_proxy/queuer'
 require 'queueing_proxy/version'
-require 'queueing_proxy/dispatcher'
+require 'queueing_proxy/dsl'
+require 'queueing_proxy/frontend'
+require 'queueing_proxy/worker'
 require 'queueing_proxy/statistics'
 
 module QueueingProxy

@@ -5,19 +5,31 @@ $LOAD_PATH << File.join(File.dirname(__FILE__), '..', 'lib')
 require 'queueing_proxy'
 
 EM.run{
+  # n to n routing topology. Whoa!
   QueueingProxy {
-    from('0.0.0.0', 10000)
-    to('127.0.0.1', 10001)
-    times(12)
-    logger(Logger.new($stdout))
-    queue_with('0.0.0.0', 'http-queue')
+    from '0.0.0.0', 10000
+    from '0.0.0.0', 10007
+
+    to '127.0.0.1', 10001 do
+      queue_with '0.0.0.0', 'http-queue'
+      workers 1
+      logger Logger.new($stdout)
+    end
+    to '127.0.0.1', 10009 do
+      queue_with '0.0.0.0', 'message-gateway-queue'
+      workers 1
+      logger Logger.new($stdout)
+    end
   }.run
 
   QueueingProxy {
-    from('0.0.0.0', 10002)
-    to('127.0.0.1', 10001)
-    times(12)
-    logger(Logger.new($stdout))
-    queue_with('0.0.0.0', 'http-queue2')
+    from '0.0.0.0', 10002
+
+    to('127.0.0.1', 10001) do
+      workers 1
+      logger(Logger.new($stdout))
+      queue_with('0.0.0.0', 'http-queue2')
+    end
+
   }.run
 }

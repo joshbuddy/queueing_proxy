@@ -2,32 +2,47 @@ require 'logger'
 
 module QueueingProxy
   class DSL
+    class Backend
+      attr_reader :tube, :host
+
+      def initialize(host='localhost', port=80, workers=4, logger=Logger.new($stdout), &block)
+        @host, @port, @workers, @logger, @beanstalk_host, @tube = host, port, workers, logger, 'localhost', 'default'
+        instance_exec(&block) if block_given?
+        self
+      end
+
+      def queue_with(beanstalk, tube)
+        @beanstalk, @tube = beanstalk, tube
+        self
+      end
+
+      def workers(workers=nil)
+        if workers
+          @workers = workers
+          self
+        else
+          (1..@workers).map { Worker.new(@logger, @host, @port, @beanstalk_host, @tube) }
+        end
+      end
+
+      def logger(logger)
+        @logger = logger
+        self
+      end
+    end
+
     def initialize(&block)
-      @dispatcher_count = 1
-      @logger = Logger.new(STDOUT)
+      @logger = Logger.new($stdout)
       instance_eval(&block) if block
     end
     
-    def to(host, port)
-      @to_host = host
-      @to_port = port
+    def to(host, port=80, &block)
+      backends << Backend.new(host, port, &block)
       self
     end
 
-    def from(host, port)
-      @from_host = host
-      @from_port = port
-      self
-    end
-
-    def times(count)
-      @dispatcher_count = count
-      self
-    end
-
-    def queue_with(beanstalk_host, tube)
-      @beanstalk_host = beanstalk_host
-      @tube = tube
+    def from(host, port=80, &block)
+      frontends << [host, port]
       self
     end
     
@@ -40,9 +55,21 @@ module QueueingProxy
       unless EM.reactor_running?
         EM.run{ run }
       else
-        Queuer.new(@logger, @from_host, @from_port, @beanstalk_host, @tube).run
-        @dispatcher_count.times { Dispatcher.new(@logger, @to_host, @to_port, @beanstalk_host, @tube).run }
+        frontends.each do |host, port|
+          Frontend.new(@logger, host, port, backends).run
+        end
+        # Setup multiple backends
+        backends.each {|b| b.workers.each(&:run) }
       end
+    end
+
+  private
+    def frontends
+      @frontends ||= []
+    end
+
+    def backends
+      @backends ||= []
     end
   end
 end
